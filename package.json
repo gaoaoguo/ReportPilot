@@ -9,9 +9,10 @@
     "lint": "eslint src next.config.ts vitest.config.ts eslint.config.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
+    "db:validate": "dotenv -e .env.local -- prisma validate",
+    "db:generate": "dotenv -e .env.local -- prisma generate",
+    "db:migrate": "dotenv -e .env.local -- prisma migrate dev",
+    "db:studio": "dotenv -e .env.local -- prisma studio",
     "worker:imports": "tsx src/workers/import-worker.ts"
   },
   "dependencies": {
@@ -44,6 +45,7 @@
     "tailwindcss": "^4.1.13",
     "tsx": "^4.20.5",
     "@eslint/eslintrc": "^3.3.1",
+    "dotenv-cli": "^11.0.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
