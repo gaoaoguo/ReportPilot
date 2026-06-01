@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum FileStatus {
+  UPLOADED
+  PARSING
+  PARSED
+  FAILED
+  DELETED
+}
+
+enum JobType {
+  IMPORT_FILE
+  GENERATE_REPORT
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum ReportStatus {
+  DRAFT
+  READY
+  FAILED
+}
+
+enum AiProvider {
+  DEEPSEEK
+}
+
+enum AiModel {
+  DEEPSEEK_V4_FLASH
+  DEEPSEEK_V4_PRO
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?   @db.VarChar(191)
+  email         String    @unique @db.VarChar(191)
+  emailVerified DateTime?
+  image         String?   @db.Text
+  passwordHash  String?   @db.VarChar(255)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  memberships     WorkspaceMember[]
+  files           FileAsset[]
+  aiCalls         AiCallLog[]
+  events          AppEvent[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String  @db.VarChar(191)
+  provider          String  @db.VarChar(191)
+  providerAccountId String  @db.VarChar(191)
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String? @db.VarChar(191)
+  scope             String? @db.Text
+  id_token          String? @db.Text
+  session_state     String? @db.VarChar(191)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @db.VarChar(191)
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String   @db.VarChar(191)
+  token      String   @unique @db.VarChar(191)
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id      String @id @default(cuid())
+  ownerId String
+  name    String @db.VarChar(191)
+  slug    String @unique @db.VarChar(191)
+  plan    Plan   @default(FREE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner        User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members      WorkspaceMember[]
+  files        FileAsset[]
+  jobs         ImportJob[]
+  reports      Report[]
+  usagePeriods UsagePeriod[]
+  aiCalls      AiCallLog[]
+  events       AppEvent[]
+
+  @@index([ownerId])
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model FileAsset {
+  id          String @id @default(cuid())
+  workspaceId String
+  userId      String
+
+  originalName String @db.VarChar(255)
+  storedName   String @db.VarChar(255)
+  storagePath  String @db.Text
+  mimeType     String @db.VarChar(191)
+  sizeBytes    Int
+
+  status            FileStatus @default(UPLOADED)
+  rowCount          Int?
+  columnCount       Int?
+  checksum          String?    @db.VarChar(191)
+  previewJson       Json?
+  columnProfileJson Json?
+  dataQualityJson   Json?
+  parseError        String?    @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs      ImportJob[]
+  reports   Report[]
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ImportJob {
+  id          String @id @default(cuid())
+  workspaceId String
+  fileId      String
+
+  type     JobType   @default(IMPORT_FILE)
+  status   JobStatus @default(PENDING)
+  progress Int       @default(0)
+
+  attempts    Int @default(0)
+  maxAttempts Int @default(3)
+
+  lockedAt DateTime?
+  lockedBy String?   @db.VarChar(191)
+
+  errorCode    String? @db.VarChar(191)
+  errorMessage String? @db.Text
+  logsJson     Json?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  file      FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  reports   Report[]
+
+  @@index([workspaceId])
+  @@index([fileId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Report {
+  id          String @id @default(cuid())
+  workspaceId String
+  fileId      String
+  jobId       String?
+
+  title   String       @db.VarChar(255)
+  summary String?      @db.Text
+  status  ReportStatus @default(DRAFT)
+
+  columnProfileJson Json?
+  dataQualityJson   Json?
+  chartsJson        Json?
+  insightsJson      Json?
+  aiRawJson         Json?
+  qualityScore      Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  file      FileAsset  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  job       ImportJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  aiCalls   AiCallLog[]
+
+  @@index([workspaceId])
+  @@index([fileId])
+  @@index([jobId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AiCallLog {
+  id          String @id @default(cuid())
+  workspaceId String
+  userId      String?
+  reportId    String?
+
+  provider AiProvider @default(DEEPSEEK)
+  model    AiModel
+
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+  latencyMs        Int?
+
+  success      Boolean @default(true)
+  errorCode    String? @db.VarChar(191)
+  errorMessage String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  report    Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([reportId])
+  @@index([createdAt])
+}
+
+model UsagePeriod {
+  id          String @id @default(cuid())
+  workspaceId String
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  filesProcessed   Int @default(0)
+  rowsProcessed    Int @default(0)
+  reportsGenerated Int @default(0)
+  aiTokensUsed     Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, periodStart, periodEnd])
+  @@index([workspaceId])
+}
+
+model AppEvent {
+  id          String  @id @default(cuid())
+  workspaceId String?
+  userId      String?
+
+  eventName      String @db.VarChar(191)
+  propertiesJson Json?
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([eventName])
+  @@index([createdAt])
+}
