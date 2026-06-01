@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requireDefaultWorkspace } from "@/lib/permissions";
 import { formatBytes, formatDateTime } from "@/lib/format";
+import { readCsvPreview } from "@/lib/files/read-csv-preview";
 import { fileStatusLabels, jobStatusLabels } from "@/lib/status-labels";
+import { ParseButton } from "./parse-button";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,8 @@ export default async function FileDetailPage({ params }: { params: Promise<{ fil
     notFound();
   }
 
+  const preview = await readCsvPreview(file.storagePath).catch(() => null);
+
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -47,6 +51,7 @@ export default async function FileDetailPage({ params }: { params: Promise<{ fil
           <h1 className="mt-3 text-3xl font-semibold">{file.originalName}</h1>
           <p className="mt-2 text-sm text-slate-600">{fileStatusLabels[file.status]}</p>
         </div>
+        <ParseButton fileId={file.id} />
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
@@ -95,6 +100,40 @@ export default async function FileDetailPage({ params }: { params: Promise<{ fil
             <p className="px-5 py-8 text-sm text-slate-600">生成报告后，会在这里显示关联记录。</p>
           )}
         </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h2 className="text-base font-semibold">文件预览</h2>
+        </div>
+        {preview?.fields.length ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  {preview.fields.map((field) => (
+                    <th className="whitespace-nowrap px-4 py-3 font-medium" key={field}>
+                      {field}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {preview.rows.map((row, index) => (
+                  <tr key={index}>
+                    {preview.fields.map((field) => (
+                      <td className="max-w-[220px] truncate px-4 py-3 text-slate-700" key={field}>
+                        {row[field] || "-"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="px-5 py-8 text-sm text-slate-600">暂时无法预览该文件。</p>
+        )}
       </section>
     </div>
   );
