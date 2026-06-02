@@ -5,6 +5,7 @@ import { requireAuth, requireDefaultWorkspace } from "@/lib/permissions";
 import { formatBytes, formatDateTime } from "@/lib/format";
 import { readCsvPreview } from "@/lib/files/read-csv-preview";
 import { fileStatusLabels, jobStatusLabels } from "@/lib/status-labels";
+import type { ColumnProfile, DataQualityIssue } from "@/lib/csv/types";
 import { ParseButton } from "./parse-button";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,10 @@ export default async function FileDetailPage({ params }: { params: Promise<{ fil
     notFound();
   }
 
-  const preview = await readCsvPreview(file.storagePath).catch(() => null);
+  const storedPreview = toStoredPreview(file.previewJson);
+  const preview = storedPreview ?? (await readCsvPreview(file.storagePath).catch(() => null));
+  const columnProfiles = toColumnProfiles(file.columnProfileJson);
+  const qualityIssues = toQualityIssues(file.dataQualityJson);
 
   return (
     <div className="space-y-6">
@@ -102,6 +106,58 @@ export default async function FileDetailPage({ params }: { params: Promise<{ fil
         </div>
       </section>
 
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="text-base font-semibold">字段画像</h2>
+          </div>
+          {columnProfiles.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">字段</th>
+                    <th className="px-4 py-3 font-medium">类型</th>
+                    <th className="px-4 py-3 font-medium">空值</th>
+                    <th className="px-4 py-3 font-medium">唯一值</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {columnProfiles.map((column) => (
+                    <tr key={column.name}>
+                      <td className="px-4 py-3 font-medium">{column.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{columnTypeLabels[column.type]}</td>
+                      <td className="px-4 py-3 text-slate-600">{column.nullCount}</td>
+                      <td className="px-4 py-3 text-slate-600">{column.uniqueCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-5 py-8 text-sm text-slate-600">worker 完成解析后会显示字段画像。</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="text-base font-semibold">数据质量</h2>
+          </div>
+          {qualityIssues.length ? (
+            <div className="divide-y divide-slate-100">
+              {qualityIssues.map((issue, index) => (
+                <div className="px-5 py-4" key={`${issue.code}-${issue.field ?? index}`}>
+                  <p className="text-sm font-medium">{issue.message}</p>
+                  <p className="mt-1 text-xs text-slate-500">{severityLabels[issue.severity]}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="px-5 py-8 text-sm text-slate-600">暂未发现数据质量问题，或文件尚未完成解析。</p>
+          )}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-semibold">文件预览</h2>
@@ -137,6 +193,67 @@ export default async function FileDetailPage({ params }: { params: Promise<{ fil
       </section>
     </div>
   );
+}
+
+const columnTypeLabels: Record<ColumnProfile["type"], string> = {
+  number: "数字",
+  date: "日期",
+  boolean: "布尔",
+  category: "分类",
+  text: "文本",
+  unknown: "未知"
+};
+
+const severityLabels: Record<DataQualityIssue["severity"], string> = {
+  low: "轻微",
+  medium: "中等",
+  high: "严重"
+};
+
+function toStoredPreview(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const preview = value as {
+    fields?: unknown;
+    rows?: unknown;
+  };
+
+  if (!Array.isArray(preview.fields) || !Array.isArray(preview.rows)) {
+    return null;
+  }
+
+  return {
+    fields: preview.fields.filter((field): field is string => typeof field === "string"),
+    rows: preview.rows.filter((row): row is Record<string, string> => Boolean(row) && typeof row === "object")
+  };
+}
+
+function toColumnProfiles(value: unknown): ColumnProfile[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is ColumnProfile => {
+    return Boolean(item) && typeof item === "object" && "name" in item && "type" in item;
+  });
+}
+
+function toQualityIssues(value: unknown): DataQualityIssue[] {
+  if (!value || typeof value !== "object" || !("issues" in value)) {
+    return [];
+  }
+
+  const issues = (value as { issues?: unknown }).issues;
+
+  if (!Array.isArray(issues)) {
+    return [];
+  }
+
+  return issues.filter((issue): issue is DataQualityIssue => {
+    return Boolean(issue) && typeof issue === "object" && "code" in issue && "message" in issue && "severity" in issue;
+  });
 }
 
 function InfoCard({ label, value }: { label: string; value: string }) {

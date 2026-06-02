@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { analyzeCsvFile } from "@/lib/csv/analyze-csv-file";
 import { claimImportJob } from "@/lib/jobs/claim-import-job";
 import { completeImportJob } from "@/lib/jobs/complete-import-job";
 import { failImportJob } from "@/lib/jobs/fail-import-job";
@@ -14,8 +15,33 @@ export const importJobRepository: ImportJobRepository = {
 };
 
 export async function processImportJob(job: ClaimedImportJob) {
-  void job;
-  throw new Error("CSV 解析将在 Phase 6 接入");
+  const file = await prisma.fileAsset.findFirst({
+    where: {
+      id: job.fileId,
+      workspaceId: job.workspaceId,
+      deletedAt: null
+    }
+  });
+
+  if (!file) {
+    throw new Error("文件不存在或无权访问");
+  }
+
+  const analysis = await analyzeCsvFile(file.storagePath);
+
+  await prisma.fileAsset.update({
+    where: {
+      id: file.id
+    },
+    data: {
+      previewJson: analysis.previewJson,
+      rowCount: analysis.rowCount,
+      columnCount: analysis.columnCount,
+      columnProfileJson: analysis.columnProfileJson,
+      dataQualityJson: analysis.dataQualityJson,
+      parseError: null
+    }
+  });
 }
 
 export async function runImportWorkerOnce(workerId: string) {
