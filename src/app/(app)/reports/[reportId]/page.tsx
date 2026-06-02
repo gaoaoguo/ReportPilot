@@ -4,6 +4,17 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireDefaultWorkspace } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/format";
 import { reportStatusLabels } from "@/lib/status-labels";
+import { ReportChart } from "@/components/reports/report-chart";
+import {
+  buildChartData,
+  normalizeColumnProfiles,
+  normalizeReportCharts,
+  normalizeReportDataQuality,
+  normalizeReportInsights,
+  normalizeReportPreview,
+  type ReportChartView,
+  type ReportDataQualityView
+} from "@/lib/reports/report-view-model";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +36,11 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ r
     notFound();
   }
 
-  const dataQuality = toReportDataQuality(report.dataQualityJson);
-  const insights = toInsights(report.insightsJson);
-  const charts = toCharts(report.chartsJson);
-  const columnProfiles = toColumnProfiles(report.columnProfileJson);
+  const dataQuality = normalizeReportDataQuality(report.dataQualityJson);
+  const insights = normalizeReportInsights(report.insightsJson);
+  const charts = normalizeReportCharts(report.chartsJson);
+  const columnProfiles = normalizeColumnProfiles(report.columnProfileJson);
+  const preview = normalizeReportPreview(report.file.previewJson);
 
   return (
     <div className="space-y-6">
@@ -48,7 +60,7 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ r
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <InfoCard label="质量评分" value={report.qualityScore?.toString() ?? "-"} />
+        <QualityScoreCard score={report.qualityScore ?? dataQuality.score} />
         <InfoCard label="生成时间" value={formatDateTime(report.createdAt)} />
         <InfoCard label="更新时间" value={formatDateTime(report.updatedAt)} />
       </section>
@@ -58,8 +70,8 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ r
         <p className="mt-3 text-sm leading-6 text-slate-600">{report.summary || "报告内容生成后，会在这里显示摘要。"}</p>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white">
+      <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-semibold">关键洞察</h2>
           </div>
@@ -77,7 +89,7 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ r
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white">
+        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-semibold">下一步建议</h2>
           </div>
@@ -95,49 +107,51 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ r
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-base font-semibold">推荐图表</h2>
-          </div>
-          {charts.length ? (
-            <div className="divide-y divide-slate-100">
-              {charts.map((chart, index) => (
-                <div className="px-5 py-4" key={`${chart.title}-${index}`}>
+      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h2 className="text-base font-semibold">推荐图表</h2>
+          <p className="mt-1 text-sm text-slate-600">基于脱敏预览数据绘制，字段由后端校验后使用。</p>
+        </div>
+        {charts.length ? (
+          <div className="grid gap-0 divide-y divide-slate-100 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+            {charts.map((chart, index) => (
+              <div className="min-w-0" key={`${chart.title}-${index}`}>
+                <div className="border-b border-slate-100 px-5 py-4">
                   <p className="text-sm font-medium">{chart.title}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {chartTypeLabels[chart.type] ?? "图表"} · {chart.xField}
+                    {chartTypeLabels[chart.type]} · {chart.xField}
                     {chart.yField ? ` / ${chart.yField}` : ""}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{chart.reason}</p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="px-5 py-8 text-sm text-slate-600">暂时没有可推荐的图表。</p>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-base font-semibold">数据质量问题</h2>
+                <ReportChart chart={chart} data={buildChartData(chart, preview)} />
+              </div>
+            ))}
           </div>
-          {dataQuality.issues.length ? (
-            <div className="divide-y divide-slate-100">
-              {dataQuality.issues.map((issue, index) => (
-                <div className="px-5 py-4" key={`${issue.message}-${index}`}>
-                  <p className="text-sm font-medium">{issue.message}</p>
-                  <p className="mt-1 text-xs text-slate-500">{qualitySeverityLabels[issue.severity] ?? "需关注"}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="px-5 py-8 text-sm text-slate-600">暂未发现需要优先处理的数据质量问题。</p>
-          )}
-        </div>
+        ) : (
+          <p className="px-5 py-8 text-sm text-slate-600">暂时没有可推荐的图表。</p>
+        )}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white">
+      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h2 className="text-base font-semibold">数据质量问题</h2>
+        </div>
+        {dataQuality.issues.length ? (
+          <div className="grid divide-y divide-slate-100 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+            {dataQuality.issues.map((issue, index) => (
+              <div className="px-5 py-4" key={`${issue.message}-${index}`}>
+                <p className="text-sm font-medium">{issue.message}</p>
+                <p className="mt-1 text-xs text-slate-500">{qualitySeverityLabels[issue.severity]}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="px-5 py-8 text-sm text-slate-600">暂未发现需要优先处理的数据质量问题。</p>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-semibold">字段画像</h2>
         </div>
@@ -156,7 +170,7 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ r
                 {columnProfiles.map((column) => (
                   <tr key={column.name}>
                     <td className="px-4 py-3 font-medium">{column.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{column.type}</td>
+                    <td className="px-4 py-3 text-slate-600">{columnTypeLabels[column.type] ?? "未知"}</td>
                     <td className="px-4 py-3 text-slate-600">{column.nullCount}</td>
                     <td className="px-4 py-3 text-slate-600">{column.uniqueCount}</td>
                   </tr>
@@ -181,36 +195,22 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-type ReportDataQuality = {
-  score: number;
-  issues: Array<{
-    severity: "low" | "medium" | "high";
-    message: string;
-  }>;
-};
+function QualityScoreCard({ score }: { score: number | null | undefined }) {
+  const value = typeof score === "number" && Number.isFinite(score) ? Math.round(score) : null;
+  const label = value === null ? "-" : `${value}`;
 
-type ReportInsightView = {
-  items: Array<{
-    title: string;
-    description: string;
-  }>;
-  nextActions: string[];
-};
-
-type ReportChartView = {
-  title: string;
-  type: "bar" | "line" | "pie" | "table";
-  xField: string;
-  yField?: string;
-  reason: string;
-};
-
-type ReportColumnProfile = {
-  name: string;
-  type: string;
-  nullCount: number;
-  uniqueCount: number;
-};
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5">
+      <p className="text-sm text-slate-500">质量评分</p>
+      <div className="mt-3 flex items-end gap-3">
+        <p className="text-2xl font-semibold">{label}</p>
+        <div className="mb-2 h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-slate-950" style={{ width: `${Math.max(0, Math.min(value ?? 0, 100))}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const chartTypeLabels: Record<ReportChartView["type"], string> = {
   bar: "柱状图",
@@ -219,71 +219,17 @@ const chartTypeLabels: Record<ReportChartView["type"], string> = {
   table: "表格"
 };
 
-const qualitySeverityLabels: Record<ReportDataQuality["issues"][number]["severity"], string> = {
+const qualitySeverityLabels: Record<ReportDataQualityView["issues"][number]["severity"], string> = {
   low: "轻微",
   medium: "中等",
   high: "严重"
 };
 
-function toReportDataQuality(value: unknown): ReportDataQuality {
-  if (!value || typeof value !== "object") {
-    return {
-      score: 0,
-      issues: []
-    };
-  }
-
-  const quality = value as Partial<ReportDataQuality>;
-
-  return {
-    score: typeof quality.score === "number" ? quality.score : 0,
-    issues: Array.isArray(quality.issues)
-      ? quality.issues.filter((issue): issue is ReportDataQuality["issues"][number] => {
-          return Boolean(issue) && typeof issue === "object" && "message" in issue && "severity" in issue;
-        })
-      : []
-  };
-}
-
-function toInsights(value: unknown): ReportInsightView {
-  if (!value || typeof value !== "object") {
-    return {
-      items: [],
-      nextActions: []
-    };
-  }
-
-  const data = value as {
-    insights?: unknown;
-    nextActions?: unknown;
-  };
-
-  return {
-    items: Array.isArray(data.insights)
-      ? data.insights.filter((insight): insight is ReportInsightView["items"][number] => {
-          return Boolean(insight) && typeof insight === "object" && "title" in insight && "description" in insight;
-        })
-      : [],
-    nextActions: Array.isArray(data.nextActions) ? data.nextActions.filter((action): action is string => typeof action === "string") : []
-  };
-}
-
-function toCharts(value: unknown): ReportChartView[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((chart): chart is ReportChartView => {
-    return Boolean(chart) && typeof chart === "object" && "title" in chart && "type" in chart && "xField" in chart && "reason" in chart;
-  });
-}
-
-function toColumnProfiles(value: unknown): ReportColumnProfile[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((column): column is ReportColumnProfile => {
-    return Boolean(column) && typeof column === "object" && "name" in column && "type" in column;
-  });
-}
+const columnTypeLabels: Record<string, string> = {
+  number: "数字",
+  date: "日期",
+  boolean: "布尔",
+  category: "分类",
+  text: "文本",
+  unknown: "未知"
+};
