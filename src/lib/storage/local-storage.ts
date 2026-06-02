@@ -11,7 +11,15 @@ export type UploadStorageTarget = {
 };
 
 export function getUploadRootDir() {
-  return path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR ?? ".local-storage/uploads");
+  const rootDir = path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR ?? ".local-storage/uploads");
+  const publicDir = path.resolve(process.cwd(), "public");
+  const relativeToPublic = path.relative(publicDir, rootDir);
+
+  if (!relativeToPublic.startsWith("..") && !path.isAbsolute(relativeToPublic)) {
+    throw new Error("INVALID_STORAGE_ROOT");
+  }
+
+  return rootDir;
 }
 
 export function buildUploadStorageTarget(workspaceId: string, fileId: string): UploadStorageTarget {

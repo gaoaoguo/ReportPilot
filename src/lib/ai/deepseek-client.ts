@@ -40,7 +40,7 @@ export async function requestDeepSeekReport(
   const baseUrl = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
   const modelName = getDeepSeekModelName(options.modelKind ?? "fast");
 
-  if (!apiKey || apiKey === "change-me") {
+  if (isPlaceholderApiKey(apiKey)) {
     throw new DeepSeekRequestError({
       code: "AI_CONFIG_ERROR",
       message: "DeepSeek API Key 未配置",
@@ -97,6 +97,10 @@ export async function requestDeepSeekReport(
     latencyMs: Date.now() - startedAt,
     modelName
   };
+}
+
+function isPlaceholderApiKey(value: string | undefined) {
+  return !value || value === "change-me" || value === "替换我";
 }
 
 export function getDeepSeekModelName(kind: DeepSeekModelKind) {

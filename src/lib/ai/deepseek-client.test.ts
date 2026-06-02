@@ -64,4 +64,13 @@ describe("deepseek client", () => {
       final: true
     } satisfies Partial<DeepSeekRequestError>);
   });
+
+  test("treats placeholder API keys as missing configuration", async () => {
+    vi.stubEnv("DEEPSEEK_API_KEY", "替换我");
+
+    await expect(requestDeepSeekReport(payload, { fetchImpl: vi.fn() })).rejects.toMatchObject({
+      code: "AI_CONFIG_ERROR",
+      final: true
+    } satisfies Partial<DeepSeekRequestError>);
+  });
 });
