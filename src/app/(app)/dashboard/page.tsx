@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, requireDefaultWorkspace } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/format";
 import { fileStatusLabels, reportStatusLabels } from "@/lib/status-labels";
+import { getWorkspaceUsage } from "@/lib/usage/get-workspace-usage";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +11,8 @@ export default async function DashboardPage() {
   const user = await requireAuth();
   const workspace = await requireDefaultWorkspace(user.id);
 
-  const [fileCount, reportCount, pendingJobCount, latestFiles, latestReports] = await Promise.all([
-    prisma.fileAsset.count({
-      where: {
-        workspaceId: workspace.id,
-        deletedAt: null
-      }
-    }),
-    prisma.report.count({
-      where: {
-        workspaceId: workspace.id
-      }
-    }),
+  const [usage, pendingJobCount, latestFiles, latestReports] = await Promise.all([
+    getWorkspaceUsage(workspace.id),
     prisma.importJob.count({
       where: {
         workspaceId: workspace.id,
@@ -68,9 +59,15 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="文件数量" value={fileCount} />
-        <MetricCard label="报告数量" value={reportCount} />
+        <UsageMetricCard label="文件额度" value={`${usage.files.used}/${usage.files.limit}`} percent={usage.files.percent} />
+        <MetricCard label="报告数量" value={usage.reports.used} />
         <MetricCard label="处理中任务" value={pendingJobCount} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="已处理行数" value={usage.rows.used} />
+        <UsageMetricCard label="AI Token" value={`${usage.aiTokens.used}/${usage.aiTokens.limit}`} percent={usage.aiTokens.percent} />
+        <MetricCard label="单文件行数上限" value={usage.rowsPerFileLimit.limit} />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
@@ -131,6 +128,18 @@ function MetricCard({ label, value }: { label: string; value: number }) {
     <div className="rounded-lg border border-slate-200 bg-white p-5">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-3 text-3xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function UsageMetricCard({ label, value, percent }: { label: string; value: string; percent: number }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5">
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className="mt-3 text-2xl font-semibold">{value}</p>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-slate-950" style={{ width: `${percent}%` }} />
+      </div>
     </div>
   );
 }

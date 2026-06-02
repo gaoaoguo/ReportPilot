@@ -7,6 +7,7 @@ import { getMaxUploadSizeMb, validateCsvUpload } from "@/lib/files/validate-uplo
 import { handleApiError } from "@/lib/handle-api-error";
 import { prisma } from "@/lib/prisma";
 import { buildUploadStorageTarget, saveUploadedFile } from "@/lib/storage/local-storage";
+import { assertCanUploadFile, getUsageLimits } from "@/lib/usage/usage-limits";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,19 @@ export async function POST(request: Request) {
   try {
     const user = await requireApiUser();
     const workspace = await requireApiDefaultWorkspace(user.id);
+    const limits = getUsageLimits();
+    const currentFileCount = await prisma.fileAsset.count({
+      where: {
+        workspaceId: workspace.id,
+        deletedAt: null
+      }
+    });
+
+    assertCanUploadFile({
+      currentFileCount,
+      maxFiles: limits.maxFiles
+    });
+
     const formData = await request.formData();
     const fileValue = formData.get("file");
     const file = fileValue instanceof File ? fileValue : null;

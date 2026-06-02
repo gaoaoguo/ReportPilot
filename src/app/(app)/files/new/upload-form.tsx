@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
-export function UploadForm() {
+export function UploadForm({ maxFiles, maxRowsPerFile }: { maxFiles: number; maxRowsPerFile: number }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +51,9 @@ export function UploadForm() {
           type="file"
         />
       </label>
+      <p className="mt-3 text-sm text-slate-500">
+        文件会保存到本地上传目录；当前最多上传 {maxFiles} 个文件，超出 {maxRowsPerFile} 行时仅处理前 {maxRowsPerFile} 行。
+      </p>
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
       <button
         className="mt-5 rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
