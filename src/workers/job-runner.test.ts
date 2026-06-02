@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { runNextImportJob } from "./job-runner";
+import { JobProcessingError, runNextImportJob } from "./job-runner";
 
 const job = {
   id: "job-1",
@@ -94,6 +94,34 @@ describe("runNextImportJob", () => {
     expect(repository.fail).toHaveBeenCalledWith(finalAttemptJob, {
       code: "IMPORT_JOB_FAILED",
       message: "parse failed",
+      final: true
+    });
+  });
+
+  test("marks job failed immediately for non retryable processor errors", async () => {
+    const repository = {
+      claimNext: vi.fn().mockResolvedValue(job),
+      complete: vi.fn(),
+      fail: vi.fn()
+    };
+
+    await expect(
+      runNextImportJob({
+        workerId: "worker-1",
+        repository,
+        processor: vi.fn().mockRejectedValue(
+          new JobProcessingError({
+            code: "AI_AUTH_ERROR",
+            message: "DeepSeek 配置不可用",
+            final: true
+          })
+        )
+      })
+    ).resolves.toEqual({ status: "failed", jobId: "job-1" });
+
+    expect(repository.fail).toHaveBeenCalledWith(job, {
+      code: "AI_AUTH_ERROR",
+      message: "DeepSeek 配置不可用",
       final: true
     });
   });

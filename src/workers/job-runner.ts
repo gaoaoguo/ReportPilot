@@ -20,6 +20,18 @@ export type ImportJobRepository = {
 
 export type ImportJobProcessor = (job: ClaimedImportJob) => Promise<void>;
 
+export class JobProcessingError extends Error {
+  code: string;
+  final?: boolean;
+
+  constructor({ code, message, final }: { code: string; message: string; final?: boolean }) {
+    super(message);
+    this.name = "JobProcessingError";
+    this.code = code;
+    this.final = final;
+  }
+}
+
 export type RunNextImportJobResult =
   | {
       status: "idle";
@@ -55,10 +67,11 @@ export async function runNextImportJob({
       jobId: job.id
     };
   } catch (error) {
-    const final = job.attempts >= job.maxAttempts;
+    const processingError = error instanceof JobProcessingError ? error : null;
+    const final = processingError?.final ?? job.attempts >= job.maxAttempts;
 
     await repository.fail(job, {
-      code: "IMPORT_JOB_FAILED",
+      code: processingError?.code ?? "IMPORT_JOB_FAILED",
       message: error instanceof Error ? error.message : "任务处理失败",
       final
     });

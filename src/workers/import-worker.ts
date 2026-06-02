@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { generateReportForFile } from "@/lib/ai/generate-report-insights";
 import { analyzeCsvFile } from "@/lib/csv/analyze-csv-file";
 import { claimImportJob } from "@/lib/jobs/claim-import-job";
 import { completeImportJob } from "@/lib/jobs/complete-import-job";
@@ -41,6 +42,15 @@ export async function processImportJob(job: ClaimedImportJob) {
       dataQualityJson: analysis.dataQualityJson,
       parseError: null
     }
+  });
+
+  await generateReportForFile({
+    workspaceId: job.workspaceId,
+    userId: file.userId,
+    fileId: file.id,
+    jobId: job.id,
+    originalName: file.originalName,
+    analysis
   });
 }
 
